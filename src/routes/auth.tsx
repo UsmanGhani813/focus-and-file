@@ -156,7 +156,7 @@ function AuthPage() {
 
         <form onSubmit={onSubmit} className="mt-6 space-y-4" noValidate>
           {mode === "register" && (
-            <Field label="Full name" error={errors.fullName}>
+            <Field label="Full name" error={errors["fullName"]}>
               <Input
                 value={form.fullName}
                 onChange={(e) => set("fullName", e.target.value)}
@@ -167,7 +167,7 @@ function AuthPage() {
             </Field>
           )}
 
-          <Field label="Email" error={errors.email}>
+          <Field label="Email" error={errors["email"]}>
             <Input
               type="email"
               value={form.email}
@@ -179,7 +179,7 @@ function AuthPage() {
           </Field>
 
           {mode === "register" && (
-            <Field label="Phone number" error={errors.phone}>
+            <Field label="Phone number" error={errors["phone"]}>
               <Input
                 type="tel"
                 value={form.phone}
@@ -193,7 +193,7 @@ function AuthPage() {
 
           <Field
             label="Password"
-            error={errors.password}
+            error={errors["password"]}
             hint={mode === "register" ? "At least 8 characters." : undefined}
           >
             <Input
@@ -236,8 +236,8 @@ function Field({
   children,
 }: {
   label: string;
-  error?: string;
-  hint?: string;
+  error?: string | undefined;
+  hint?: string | undefined;
   children: React.ReactNode;
 }) {
   return (
