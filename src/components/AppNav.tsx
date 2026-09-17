@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Timer, LogOut, UserRound, ChevronDown } from "lucide-react";
+import { LogOut, UserRound, ChevronDown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { initials } from "@/lib/work";
@@ -45,9 +45,13 @@ export function AppNav() {
     <header className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-5xl items-center justify-between gap-3 px-4 sm:px-6">
         <Link to="/" className="flex items-center gap-2.5">
-          <span className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground">
-            <Timer className="size-5" />
-          </span>
+          <img
+            src="/logo-mark.png"
+            alt="Quorlex Soft"
+            className="size-9 rounded-xl object-contain"
+            width={36}
+            height={36}
+          />
           <span className="text-lg font-semibold tracking-tight">Tempo</span>
         </Link>
 

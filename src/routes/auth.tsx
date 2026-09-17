@@ -2,7 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { z } from "zod";
 import { toast } from "sonner";
-import { Loader2, Timer } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { friendlyError } from "@/lib/work";
@@ -127,9 +127,13 @@ function AuthPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-4 py-12">
       <Link to="/" className="mb-8 flex items-center gap-2.5">
-        <span className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground">
-          <Timer className="size-5" />
-        </span>
+        <img
+          src="/logo-mark.png"
+          alt="Quorlex Soft"
+          className="size-9 rounded-xl object-contain"
+          width={36}
+          height={36}
+        />
         <span className="text-lg font-semibold tracking-tight">Tempo</span>
       </Link>
 
