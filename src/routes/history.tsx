@@ -196,20 +196,80 @@ function HistoryPage() {
           Completed sessions people chose to share, newest first.
         </p>
 
+        {/* LIVE NOW — anyone whose timer is running right now */}
+        {activeQuery.data && activeQuery.data.length > 0 && (
+          <section className="mt-6 rounded-2xl border-2 border-emerald-500/40 bg-emerald-500/5 p-4 sm:p-5">
+            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-400">
+              <Radio className="size-3.5 animate-pulse" />
+              Live now
+              <span className="ml-1 font-mono text-emerald-700/70 dark:text-emerald-400/70">
+                {activeQuery.data.length} working
+              </span>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-4">
+              {activeQuery.data.map((t) => {
+                const elapsed = Math.max(
+                  0,
+                  Math.floor((now - new Date(t.started_at).getTime()) / 1000),
+                );
+                return (
+                  <div key={t.user_id} className="flex flex-col items-center gap-1.5">
+                    <div className="relative">
+                      <span className="grid size-12 place-items-center rounded-full bg-accent text-sm font-bold text-accent-foreground">
+                        {initials(t.name)}
+                      </span>
+                      {/* Solid green online dot at the bottom-right of the avatar */}
+                      <span className="absolute bottom-0 right-0 grid size-4 place-items-center">
+                        <span className="absolute inline-flex size-4 animate-ping rounded-full bg-emerald-500/40" />
+                        <span className="relative inline-flex size-3.5 rounded-full bg-emerald-500 ring-2 ring-background" />
+                      </span>
+                    </div>
+                    <p className="max-w-24 truncate text-center text-xs font-medium">{t.name}</p>
+                    <p className="font-mono text-[12px] font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
+                      {formatDuration(elapsed)}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
         {/* PERSON FILTER */}
         <FilterBlock icon={<UsersIcon className="size-4" />} label="Person">
           <Chip active={selectedUser === null} onClick={() => setSelectedUser(null)}>
             All
           </Chip>
-          {people.map((p) => (
-            <Chip key={p.id} active={selectedUser === p.id} onClick={() => setSelectedUser(p.id)}>
-              <span className="grid size-5 place-items-center rounded-full bg-accent text-[9px] font-bold text-accent-foreground">
-                {initials(p.name)}
-              </span>
-              {p.name}
-              <span className="font-mono text-[10px] opacity-70">{p.count}</span>
-            </Chip>
-          ))}
+          {people.map((p) => {
+            const startedAtMs = activeById.get(p.id);
+            const isLive = startedAtMs !== undefined;
+            const elapsed = isLive ? Math.max(0, Math.floor((now - startedAtMs) / 1000)) : 0;
+            return (
+              <div key={p.id} className="flex flex-col items-start gap-0.5">
+                <Chip active={selectedUser === p.id} onClick={() => setSelectedUser(p.id)}>
+                  <span className="relative">
+                    <span className="grid size-5 place-items-center rounded-full bg-accent text-[9px] font-bold text-accent-foreground">
+                      {initials(p.name)}
+                    </span>
+                    {isLive && (
+                      <span className="absolute -right-1 -top-1 grid size-3 place-items-center">
+                        <span className="absolute inline-flex size-3 animate-ping rounded-full bg-emerald-500/60" />
+                        <span className="relative inline-flex size-2.5 rounded-full border-2 border-emerald-500 bg-background" />
+                      </span>
+                    )}
+                  </span>
+                  {p.name}
+                  <span className="font-mono text-[10px] opacity-70">{p.count}</span>
+                </Chip>
+                {isLive && (
+                  <span className="ml-4 inline-flex items-center gap-1 font-mono text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
+                    <Radio className="size-2.5 animate-pulse" />
+                    Working · {formatDuration(elapsed)}
+                  </span>
+                )}
+              </div>
+            );
+          })}
         </FilterBlock>
 
         {/* TIME PRESETS */}
