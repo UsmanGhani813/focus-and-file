@@ -164,9 +164,7 @@ function HistoryPage() {
   const analytics = useMemo(() => {
     const total = filtered.length;
     const totalSeconds = filtered.reduce((sum, s) => sum + s.duration_seconds, 0);
-    const avg = total > 0 ? Math.round(totalSeconds / total) : 0;
-    const activeUsers = new Set(filtered.map((s) => s.user_id)).size;
-    return { total, totalSeconds, avg, activeUsers };
+    return { total, totalSeconds };
   }, [filtered]);
 
   const activePerson = people.find((p) => p.id === selectedUser) ?? null;
@@ -245,16 +243,17 @@ function HistoryPage() {
             const isLive = startedAtMs !== undefined;
             const elapsed = isLive ? Math.max(0, Math.floor((now - startedAtMs) / 1000)) : 0;
             return (
-              <div key={p.id} className="flex flex-col items-start gap-0.5">
+              <div key={p.id} className="flex flex-col items-start gap-1">
                 <Chip active={selectedUser === p.id} onClick={() => setSelectedUser(p.id)}>
                   <span className="relative">
                     <span className="grid size-5 place-items-center rounded-full bg-accent text-[9px] font-bold text-accent-foreground">
                       {initials(p.name)}
                     </span>
+                    {/* Solid green online dot at the bottom-right of the avatar (matches reference image) */}
                     {isLive && (
-                      <span className="absolute -right-1 -top-1 grid size-3 place-items-center">
-                        <span className="absolute inline-flex size-3 animate-ping rounded-full bg-emerald-500/60" />
-                        <span className="relative inline-flex size-2.5 rounded-full border-2 border-emerald-500 bg-background" />
+                      <span className="absolute -bottom-0.5 -right-0.5 grid place-items-center">
+                        <span className="absolute inline-flex size-2.5 animate-ping rounded-full bg-emerald-500/50" />
+                        <span className="relative inline-flex size-2.5 rounded-full bg-emerald-500 ring-2 ring-background" />
                       </span>
                     )}
                   </span>
@@ -262,8 +261,8 @@ function HistoryPage() {
                   <span className="font-mono text-[10px] opacity-70">{p.count}</span>
                 </Chip>
                 {isLive && (
-                  <span className="ml-4 inline-flex items-center gap-1 font-mono text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
-                    <Radio className="size-2.5 animate-pulse" />
+                  <span className="ml-2 inline-flex items-center gap-1 font-mono text-[11px] font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
+                    <span className="inline-flex size-1.5 rounded-full bg-emerald-500" />
                     Working · {formatDuration(elapsed)}
                   </span>
                 )}
