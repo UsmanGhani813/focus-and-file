@@ -284,22 +284,14 @@ function UsersPanel({ search }: { search: string }) {
                   {u.session_count === 1 ? "" : "s"} · {formatDuration(u.total_seconds)}
                 </p>
               </div>
-              <div className="flex items-center gap-4">
-                <label className="flex items-center gap-2 text-xs">
-                  <span className="font-medium text-muted-foreground">Admin</span>
-                  <Switch
-                    checked={u.is_admin}
-                    disabled={toggleAdmin.isPending}
-                    onCheckedChange={(makeAdmin) =>
-                      toggleAdmin.mutate({ userId: u.id, makeAdmin })
-                    }
-                  />
-                </label>
+              <div className="flex items-center gap-2">
                 <Button
                   variant="ghost"
                   size="sm"
                   className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                   onClick={() => setToRemove({ id: u.id, name: u.full_name || u.email || "user" })}
+                  disabled={u.is_admin}
+                  title={u.is_admin ? "Admins cannot be removed from the panel" : "Remove user"}
                 >
                   <Trash2 className="size-4" />
                 </Button>
