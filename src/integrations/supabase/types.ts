@@ -7,8 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
@@ -93,6 +91,9 @@ export type Database = {
       }
       profiles: {
         Row: {
+          approval_status: Database["public"]["Enums"]["approval_status"]
+          approved_at: string | null
+          approved_by: string | null
           avatar_url: string | null
           created_at: string
           email: string | null
@@ -102,6 +103,9 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          approval_status?: Database["public"]["Enums"]["approval_status"]
+          approved_at?: string | null
+          approved_by?: string | null
           avatar_url?: string | null
           created_at?: string
           email?: string | null
@@ -111,6 +115,9 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          approval_status?: Database["public"]["Enums"]["approval_status"]
+          approved_at?: string | null
+          approved_by?: string | null
           avatar_url?: string | null
           created_at?: string
           email?: string | null
@@ -204,6 +211,7 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user"
+      approval_status: "pending" | "approved" | "declined"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -332,6 +340,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user"],
+      approval_status: ["pending", "approved", "declined"],
     },
   },
 } as const

@@ -2,7 +2,20 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Loader2, ShieldCheck, Trash2, Users, Clock, Paperclip, Search } from "lucide-react";
+import {
+  Loader2,
+  ShieldCheck,
+  Trash2,
+  Users,
+  Clock,
+  Paperclip,
+  Search,
+  UserCheck,
+  Check,
+  X,
+  Phone,
+  Mail,
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppNav } from "@/components/AppNav";
 import { Button } from "@/components/ui/button";
@@ -54,6 +67,15 @@ type AdminUser = {
   session_count: number;
   total_seconds: number;
   is_admin: boolean;
+  approval_status: "pending" | "approved" | "declined";
+};
+
+type PendingUser = {
+  id: string;
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+  created_at: string;
 };
 
 type AdminSession = {
@@ -71,13 +93,13 @@ type AdminSession = {
 };
 
 function AdminPage() {
-  const [tab, setTab] = useState<"users" | "sessions">("users");
+  const [tab, setTab] = useState<"pending" | "users" | "sessions">("pending");
   const [search, setSearch] = useState("");
 
   const statsQuery = useQuery({
     queryKey: ["admin-stats"],
     queryFn: async () => {
-      const [users, sessions, attachments, publicSessions] = await Promise.all([
+      const [users, sessions, attachments, publicSessions, pending] = await Promise.all([
         supabase.from("profiles").select("id", { count: "exact", head: true }),
         supabase.from("work_sessions").select("id, duration_seconds"),
         supabase.from("attachments").select("id", { count: "exact", head: true }),
@@ -85,6 +107,10 @@ function AdminPage() {
           .from("work_sessions")
           .select("id", { count: "exact", head: true })
           .eq("is_public", true),
+        supabase
+          .from("profiles")
+          .select("id", { count: "exact", head: true })
+          .eq("approval_status", "pending"),
       ]);
       const totalSeconds =
         sessions.data?.reduce((sum, s) => sum + (s.duration_seconds ?? 0), 0) ?? 0;
@@ -94,6 +120,7 @@ function AdminPage() {
         attachments: attachments.count ?? 0,
         publicSessions: publicSessions.count ?? 0,
         totalSeconds,
+        pending: pending.count ?? 0,
       };
     },
   });
@@ -111,7 +138,14 @@ function AdminPage() {
         </p>
 
         {/* STATS */}
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <StatCard
+            icon={<UserCheck className="size-4" />}
+            label="Pending approvals"
+            value={statsQuery.data?.pending ?? "—"}
+            loading={statsQuery.isLoading}
+            highlight={!!statsQuery.data && statsQuery.data.pending > 0}
+          />
           <StatCard
             icon={<Users className="size-4" />}
             label="Users"
@@ -137,7 +171,7 @@ function AdminPage() {
           />
           <StatCard
             icon={<Clock className="size-4" />}
-            label="Total time tracked"
+            label="Total time"
             value={
               statsQuery.data
                 ? formatDuration(statsQuery.data.totalSeconds)
@@ -149,25 +183,39 @@ function AdminPage() {
 
         {/* TABS */}
         <div className="mt-8 flex gap-2 border-b border-border">
+          <TabButton active={tab === "pending"} onClick={() => setTab("pending")}>
+            <span className="inline-flex items-center gap-1.5">
+              Pending approvals
+              {statsQuery.data && statsQuery.data.pending > 0 && (
+                <span className="grid size-5 place-items-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
+                  {statsQuery.data.pending}
+                </span>
+              )}
+            </span>
+          </TabButton>
           <TabButton active={tab === "users"} onClick={() => setTab("users")}>
-            Users
+            All users
           </TabButton>
           <TabButton active={tab === "sessions"} onClick={() => setTab("sessions")}>
             All sessions
           </TabButton>
         </div>
 
-        <div className="relative mt-4">
-          <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={tab === "users" ? "Search users by name or email" : "Search sessions"}
-            className="h-11 rounded-full pl-10"
-          />
-        </div>
+        {tab !== "pending" && (
+          <div className="relative mt-4">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={tab === "users" ? "Search users by name or email" : "Search sessions"}
+              className="h-11 rounded-full pl-10"
+            />
+          </div>
+        )}
 
-        {tab === "users" ? (
+        {tab === "pending" ? (
+          <PendingPanel />
+        ) : tab === "users" ? (
           <UsersPanel search={search} />
         ) : (
           <SessionsPanel search={search} />
@@ -189,7 +237,7 @@ function UsersPanel({ search }: { search: string }) {
       const [profiles, sessions, roles] = await Promise.all([
         supabase
           .from("profiles")
-          .select("id, full_name, email, phone, created_at")
+          .select("id, full_name, email, phone, created_at, approval_status")
           .order("created_at", { ascending: false }),
         supabase.from("work_sessions").select("user_id, duration_seconds"),
         supabase.from("user_roles").select("user_id, role").eq("role", "admin"),
@@ -214,6 +262,7 @@ function UsersPanel({ search }: { search: string }) {
         session_count: sessionMap.get(p.id)?.count ?? 0,
         total_seconds: sessionMap.get(p.id)?.seconds ?? 0,
         is_admin: adminSet.has(p.id),
+        approval_status: p.approval_status,
       }));
     },
   });
@@ -270,11 +319,21 @@ function UsersPanel({ search }: { search: string }) {
                 {initials(u.full_name || u.email || "?")}
               </span>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <p className="truncate font-semibold">{u.full_name || "Unnamed"}</p>
                   {u.is_admin && (
                     <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
                       Admin
+                    </span>
+                  )}
+                  {u.approval_status === "pending" && (
+                    <span className="shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-600">
+                      Pending
+                    </span>
+                  )}
+                  {u.approval_status === "declined" && (
+                    <span className="shrink-0 rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-destructive">
+                      Declined
                     </span>
                   )}
                 </div>
@@ -498,6 +557,152 @@ function SessionsPanel({ search }: { search: string }) {
   );
 }
 
+/* ---------- PENDING APPROVALS ---------- */
+
+function PendingPanel() {
+  const queryClient = useQueryClient();
+
+  const pendingQuery = useQuery({
+    queryKey: ["admin-pending"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, full_name, email, phone, created_at")
+        .eq("approval_status", "pending")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as PendingUser[];
+    },
+  });
+
+  const approve = useMutation({
+    mutationFn: async (userId: string) => {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ approval_status: "approved", approved_at: new Date().toISOString() })
+        .eq("id", userId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("User approved. They can now log in.");
+      queryClient.invalidateQueries({ queryKey: ["admin-pending"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-stats"] });
+    },
+    onError: (e) => toast.error(friendlyError(e, "Couldn't approve user")),
+  });
+
+  const decline = useMutation({
+    mutationFn: async (userId: string) => {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ approval_status: "declined" })
+        .eq("id", userId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("User declined. They can no longer log in.");
+      queryClient.invalidateQueries({ queryKey: ["admin-pending"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-stats"] });
+    },
+    onError: (e) => toast.error(friendlyError(e, "Couldn't decline user")),
+  });
+
+  if (pendingQuery.isLoading) {
+    return (
+      <div className="mt-4 space-y-3">
+        <Skeleton className="h-24 rounded-2xl" />
+        <Skeleton className="h-24 rounded-2xl" />
+      </div>
+    );
+  }
+
+  const pending = pendingQuery.data ?? [];
+
+  if (pending.length === 0) {
+    return (
+      <div className="mt-4 rounded-2xl border border-dashed border-border p-10 text-center">
+        <UserCheck className="mx-auto size-8 text-muted-foreground" />
+        <p className="mt-3 font-medium">No pending approvals</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          New user registrations that need your review will appear here.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 space-y-3">
+      {pending.map((u) => {
+        const busyThis =
+          (approve.isPending && approve.variables === u.id) ||
+          (decline.isPending && decline.variables === u.id);
+        return (
+          <div
+            key={u.id}
+            className="flex flex-wrap items-center gap-4 rounded-2xl border-2 border-amber-500/40 bg-amber-500/5 p-4"
+          >
+            <span className="grid size-11 shrink-0 place-items-center rounded-full bg-amber-500/20 text-sm font-bold text-amber-700">
+              {initials(u.full_name || u.email || "?")}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="truncate font-semibold">{u.full_name || "Unnamed"}</p>
+                <span className="shrink-0 rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                  Awaiting approval
+                </span>
+              </div>
+              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5">
+                  <Mail className="size-3.5" /> {u.email}
+                </span>
+                {u.phone && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Phone className="size-3.5" /> {u.phone}
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+                Registered {formatDateTime(u.created_at)}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                disabled={busyThis}
+                onClick={() => decline.mutate(u.id)}
+              >
+                {decline.isPending && decline.variables === u.id ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <X className="size-4" />
+                )}
+                Decline
+              </Button>
+              <Button
+                size="sm"
+                className="bg-emerald-600 text-white hover:bg-emerald-700"
+                disabled={busyThis}
+                onClick={() => approve.mutate(u.id)}
+              >
+                {approve.isPending && approve.variables === u.id ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Check className="size-4" />
+                )}
+                Approve
+              </Button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ---------- helpers ---------- */
 
 function StatCard({
@@ -506,19 +711,33 @@ function StatCard({
   value,
   hint,
   loading,
+  highlight,
 }: {
   icon: React.ReactNode;
   label: string;
   value: React.ReactNode;
   hint?: string | undefined;
   loading?: boolean;
+  highlight?: boolean;
 }) {
   return (
-    <div className="rounded-2xl border border-border bg-card p-4">
-      <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+    <div
+      className={`rounded-2xl border bg-card p-4 ${
+        highlight ? "border-destructive/40 bg-destructive/5" : "border-border"
+      }`}
+    >
+      <div
+        className={`flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide ${
+          highlight ? "text-destructive" : "text-muted-foreground"
+        }`}
+      >
         {icon} {label}
       </div>
-      <p className="mt-2 font-mono text-2xl font-semibold tnum">
+      <p
+        className={`mt-2 font-mono text-2xl font-semibold tnum ${
+          highlight ? "text-destructive" : ""
+        }`}
+      >
         {loading ? <Skeleton className="h-7 w-16" /> : value}
       </p>
       {hint && <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">{hint}</p>}

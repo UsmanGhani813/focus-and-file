@@ -13,6 +13,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const searchSchema = z.object({
   mode: z.enum(["login", "register"]).optional(),
+  status: z.enum(["pending", "declined"]).optional(),
 });
 
 export const Route = createFileRoute("/auth")({
@@ -53,6 +54,11 @@ const loginSchema = z.object({
   password: z.string().min(1, "Please enter your password"),
 });
 
+type Notice =
+  | { kind: "pending"; email: string }
+  | { kind: "declined"; email: string }
+  | null;
+
 function AuthPage() {
   const search = Route.useSearch();
   const navigate = useNavigate();
@@ -61,7 +67,13 @@ function AuthPage() {
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [form, setForm] = useState({ fullName: "", email: "", phone: "", password: "" });
-  const [pendingConfirmEmail, setPendingConfirmEmail] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice>(
+    search.status === "pending"
+      ? { kind: "pending", email: "" }
+      : search.status === "declined"
+        ? { kind: "declined", email: "" }
+        : null,
+  );
 
   useEffect(() => {
     if (!loading && isAuthenticated) navigate({ to: "/dashboard", replace: true });
@@ -74,6 +86,7 @@ function AuthPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErrors({});
+    setNotice(null);
 
     if (mode === "register") {
       const parsed = registerSchema.safeParse(form);
@@ -84,7 +97,7 @@ function AuthPage() {
         return;
       }
       setBusy(true);
-      const { data, error } = await supabase.auth.signUp({
+      const { error } = await supabase.auth.signUp({
         email: parsed.data.email,
         password: parsed.data.password,
         options: {
@@ -92,19 +105,18 @@ function AuthPage() {
           data: { full_name: parsed.data.fullName, phone: parsed.data.phone },
         },
       });
-      setBusy(false);
       if (error) {
+        setBusy(false);
         toast.error(friendlyError(error));
         return;
       }
-      if (!data.session) {
-        setPendingConfirmEmail(parsed.data.email);
-        setMode("login");
-        setForm((f) => ({ ...f, password: "" }));
-        return;
-      }
-      toast.success(`Welcome, ${parsed.data.fullName.split(" ")[0]}!`);
-      navigate({ to: "/dashboard", replace: true });
+      // A new account is always pending admin approval. Sign the user out immediately
+      // so the session Supabase returned cannot be used to reach the dashboard.
+      await supabase.auth.signOut();
+      setBusy(false);
+      setNotice({ kind: "pending", email: parsed.data.email });
+      setMode("login");
+      setForm((f) => ({ ...f, password: "" }));
       return;
     }
 
@@ -116,12 +128,46 @@ function AuthPage() {
       return;
     }
     setBusy(true);
-    const { error } = await supabase.auth.signInWithPassword(parsed.data);
-    setBusy(false);
+    const { data: signInData, error } = await supabase.auth.signInWithPassword(parsed.data);
     if (error) {
+      setBusy(false);
       toast.error(friendlyError(error));
       return;
     }
+
+    // Login worked. Check approval status before letting them in.
+    const userId = signInData.user?.id;
+    if (!userId) {
+      setBusy(false);
+      toast.error("Something went wrong. Please try again.");
+      return;
+    }
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("approval_status")
+      .eq("id", userId)
+      .maybeSingle();
+    if (profileError || !profile) {
+      await supabase.auth.signOut();
+      setBusy(false);
+      toast.error("We couldn't load your account. Please try again.");
+      return;
+    }
+    if (profile.approval_status === "pending") {
+      await supabase.auth.signOut();
+      setBusy(false);
+      setNotice({ kind: "pending", email: parsed.data.email });
+      setForm((f) => ({ ...f, password: "" }));
+      return;
+    }
+    if (profile.approval_status === "declined") {
+      await supabase.auth.signOut();
+      setBusy(false);
+      setNotice({ kind: "declined", email: parsed.data.email });
+      setForm((f) => ({ ...f, password: "" }));
+      return;
+    }
+    setBusy(false);
     toast.success("Welcome back");
     navigate({ to: "/dashboard", replace: true });
   }
@@ -151,13 +197,50 @@ function AuthPage() {
           </TabsList>
         </Tabs>
 
+        {notice?.kind === "pending" && (
+          <div
+            role="alert"
+            className="mt-4 rounded-2xl border-2 border-destructive bg-destructive/10 p-4"
+          >
+            <p className="text-sm font-semibold text-destructive">
+              Your account is waiting for admin approval.
+            </p>
+            <p className="mt-1.5 text-xs text-destructive/90">
+              {notice.email
+                ? `We received your registration for `
+                : `We received your registration. `}
+              {notice.email && <span className="font-mono font-semibold">{notice.email}</span>}
+              {notice.email && ". "}
+              An administrator will review it shortly. You will be able to log in once your account
+              is approved.
+            </p>
+          </div>
+        )}
+
+        {notice?.kind === "declined" && (
+          <div
+            role="alert"
+            className="mt-4 rounded-2xl border-2 border-destructive bg-destructive/10 p-4"
+          >
+            <p className="text-sm font-semibold text-destructive">
+              This account was not approved.
+            </p>
+            <p className="mt-1.5 text-xs text-destructive/90">
+              Your registration for{" "}
+              {notice.email && <span className="font-mono font-semibold">{notice.email}</span>}{" "}
+              was declined by an administrator. Please contact support if you believe this is a
+              mistake.
+            </p>
+          </div>
+        )}
+
         <h1 className="mt-6 text-2xl font-semibold tracking-tight">
           {mode === "login" ? "Log in to Tempo" : "Create your account"}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {mode === "login"
             ? "Pick up where you left off — a running timer will be restored."
-            : "A few details and you're timing your first session."}
+            : "Fill in a few details. An admin will review your account before you can log in."}
         </p>
 
         <form onSubmit={onSubmit} className="mt-6 space-y-4" noValidate>
