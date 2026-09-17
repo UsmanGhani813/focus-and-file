@@ -374,7 +374,7 @@ function HistoryPage() {
                 </Button>
               )}
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <StatTile
                 icon={<Clock className="size-4" />}
                 label="Total time"
@@ -384,16 +384,6 @@ function HistoryPage() {
                 icon={<ListChecks className="size-4" />}
                 label="Sessions"
                 value={String(analytics.total)}
-              />
-              <StatTile
-                icon={<Clock className="size-4" />}
-                label="Average"
-                value={analytics.total > 0 ? formatDuration(analytics.avg) : "—"}
-              />
-              <StatTile
-                icon={<UsersIcon className="size-4" />}
-                label={activePerson ? "This person" : "Active people"}
-                value={activePerson ? "1" : String(analytics.activeUsers)}
               />
             </div>
           </section>
