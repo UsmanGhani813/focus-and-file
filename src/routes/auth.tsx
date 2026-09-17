@@ -61,6 +61,7 @@ function AuthPage() {
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [form, setForm] = useState({ fullName: "", email: "", phone: "", password: "" });
+  const [pendingConfirmEmail, setPendingConfirmEmail] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && isAuthenticated) navigate({ to: "/dashboard", replace: true });
@@ -97,8 +98,9 @@ function AuthPage() {
         return;
       }
       if (!data.session) {
-        toast.success("Account created. Check your email to confirm your address, then log in.");
+        setPendingConfirmEmail(parsed.data.email);
         setMode("login");
+        setForm((f) => ({ ...f, password: "" }));
         return;
       }
       toast.success(`Welcome, ${parsed.data.fullName.split(" ")[0]}!`);
