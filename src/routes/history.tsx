@@ -496,8 +496,10 @@ function Chip({
       onClick={onClick}
       className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
         active
-          ? "border-primary bg-primary text-primary-foreground"
-          : "border-border bg-card text-foreground hover:border-primary/40"
+          ? // Explicit blue so the selected state is visible on any theme (light + dark),
+            // matching the desktop appearance the user showed in the reference image.
+            "border-blue-600 bg-blue-600 text-white shadow-sm"
+          : "border-border bg-card text-foreground hover:border-blue-600/40"
       }`}
     >
       {children}
