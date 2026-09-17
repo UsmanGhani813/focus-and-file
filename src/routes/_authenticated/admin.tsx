@@ -218,30 +218,6 @@ function UsersPanel({ search }: { search: string }) {
     },
   });
 
-  const toggleAdmin = useMutation({
-    mutationFn: async ({ userId, makeAdmin }: { userId: string; makeAdmin: boolean }) => {
-      if (makeAdmin) {
-        const { error } = await supabase
-          .from("user_roles")
-          .insert({ user_id: userId, role: "admin" });
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from("user_roles")
-          .delete()
-          .eq("user_id", userId)
-          .eq("role", "admin");
-        if (error) throw error;
-      }
-    },
-    onSuccess: (_data, vars) => {
-      toast.success(vars.makeAdmin ? "Admin role granted" : "Admin role revoked");
-      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
-      queryClient.invalidateQueries({ queryKey: ["is-admin"] });
-    },
-    onError: (e) => toast.error(friendlyError(e, "Couldn't update role")),
-  });
-
   const removeUser = useMutation({
     mutationFn: async (userId: string) => {
       // Cascade delete: work_sessions/attachments have ON DELETE CASCADE from profiles.
