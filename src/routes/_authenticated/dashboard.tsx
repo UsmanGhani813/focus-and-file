@@ -238,7 +238,7 @@ function Dashboard() {
 
           <div className="relative mx-auto mt-6 grid size-[min(78vw,330px)] place-items-center">
             <div
-              className={`absolute inset-0 rounded-full border-[6px] ${
+              className={`pointer-events-none absolute inset-0 rounded-full border-[6px] ${
                 runningSince && !showForm ? "border-accent animate-blink" : "border-border"
               }`}
             />
