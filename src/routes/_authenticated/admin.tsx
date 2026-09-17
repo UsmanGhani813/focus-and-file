@@ -269,16 +269,17 @@ function UsersPanel({ search }: { search: string }) {
 
   const removeUser = useMutation({
     mutationFn: async (userId: string) => {
-      // Cascade delete: work_sessions/attachments have ON DELETE CASCADE from profiles.
-      // Deleting the profile row leaves the auth.users record; that must be removed from
-      // the Supabase dashboard (requires service role).
-      const { error } = await supabase.from("profiles").delete().eq("id", userId);
+      // Calls a SECURITY DEFINER function on the DB that deletes the auth.users row.
+      // The cascade wipes the profile, sessions, attachments, timers and roles.
+      const { error } = await supabase.rpc("admin_delete_user", { target_user_id: userId });
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("User's app data removed. Delete the auth account from Supabase dashboard if you need to fully remove them.");
+      toast.success("User fully deleted.");
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
       queryClient.invalidateQueries({ queryKey: ["admin-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-pending"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-sessions"] });
       setToRemove(null);
     },
     onError: (e) => toast.error(friendlyError(e, "Couldn't remove user")),
@@ -363,10 +364,10 @@ function UsersPanel({ search }: { search: string }) {
       <AlertDialog open={!!toRemove} onOpenChange={(open) => !open && setToRemove(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove {toRemove?.name}?</AlertDialogTitle>
+            <AlertDialogTitle>Delete {toRemove?.name} completely?</AlertDialogTitle>
             <AlertDialogDescription>
-              This deletes their profile, sessions and attachments. The Supabase auth account
-              stays until you also remove it from the Supabase dashboard.
+              This permanently deletes their account, profile, work sessions and attachments.
+              They will no longer be able to log in. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
