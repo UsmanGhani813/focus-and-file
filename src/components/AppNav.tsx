@@ -1,8 +1,9 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { LogOut, UserRound, ChevronDown } from "lucide-react";
+import { LogOut, UserRound, ChevronDown, ShieldCheck } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { initials } from "@/lib/work";
 import {
   DropdownMenu,
@@ -15,6 +16,7 @@ import { Button } from "@/components/ui/button";
 
 export function AppNav() {
   const { user, isAuthenticated } = useAuth();
+  const { isAdmin } = useIsAdmin();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -69,6 +71,14 @@ export function AppNav() {
           >
             History
           </Link>
+          {isAdmin && (
+            <Link
+              to="/admin"
+              className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground [&.active]:bg-foreground [&.active]:text-background"
+            >
+              <ShieldCheck className="size-4" /> Admin
+            </Link>
+          )}
 
           {isAuthenticated ? (
             <DropdownMenu>
@@ -87,6 +97,13 @@ export function AppNav() {
                     <UserRound className="size-4" /> Profile
                   </Link>
                 </DropdownMenuItem>
+                {isAdmin && (
+                  <DropdownMenuItem asChild>
+                    <Link to="/admin" className="cursor-pointer">
+                      <ShieldCheck className="size-4" /> Admin panel
+                    </Link>
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={signOut} className="cursor-pointer">
                   <LogOut className="size-4" /> Sign out
