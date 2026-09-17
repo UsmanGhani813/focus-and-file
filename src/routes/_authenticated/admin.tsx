@@ -138,7 +138,7 @@ function AdminPage() {
         </p>
 
         {/* STATS */}
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <StatCard
             icon={<UserCheck className="size-4" />}
             label="Pending approvals"
@@ -182,7 +182,7 @@ function AdminPage() {
         </div>
 
         {/* TABS */}
-        <div className="mt-8 flex gap-2 border-b border-border">
+        <div className="mt-8 flex gap-1 overflow-x-auto border-b border-border sm:gap-2">
           <TabButton active={tab === "pending"} onClick={() => setTab("pending")}>
             <span className="inline-flex items-center gap-1.5">
               Pending approvals
@@ -758,7 +758,7 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+      className={`-mb-px whitespace-nowrap border-b-2 px-2 py-2.5 text-sm font-medium transition-colors sm:px-4 ${
         active
           ? "border-primary text-foreground"
           : "border-transparent text-muted-foreground hover:text-foreground"
