@@ -1,12 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search } from "lucide-react";
+import { Calendar, Clock, ListChecks, Search, Users as UsersIcon, Radio } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppNav } from "@/components/AppNav";
 import { WorkDetailDialog } from "@/components/WorkDetailDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDateTime, formatDuration, initials, type WorkSession } from "@/lib/work";
 
@@ -30,10 +31,29 @@ export const Route = createFileRoute("/history")({
   component: HistoryPage,
 });
 
+/** Predefined day ranges */
+const RANGE_PRESETS: { label: string; days: number }[] = [
+  { label: "Today", days: 1 },
+  { label: "3 days", days: 3 },
+  { label: "7 days", days: 7 },
+  { label: "14 days", days: 14 },
+  { label: "30 days", days: 30 },
+];
+
+function toDateInputValue(d: Date): string {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 function HistoryPage() {
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [detail, setDetail] = useState<WorkSession | null>(null);
+  const [rangeDays, setRangeDays] = useState<number | null>(null);
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
 
   const sessionsQuery = useQuery({
     queryKey: ["public-sessions"],
@@ -51,6 +71,47 @@ function HistoryPage() {
     },
   });
 
+  // Live "who is working right now" list. Refetches every 20s so the roster stays fresh,
+  // and the per-second display counter below reads from these started_at timestamps.
+  const activeQuery = useQuery({
+    queryKey: ["active-timers-public"],
+    refetchInterval: 20_000,
+    queryFn: async () => {
+      const { data: timers, error } = await supabase
+        .from("active_timers")
+        .select("user_id, started_at");
+      if (error) throw error;
+      const ids = (timers ?? []).map((t) => t.user_id);
+      if (ids.length === 0) return [] as { user_id: string; started_at: string; name: string }[];
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", ids);
+      const nameMap = new Map<string, string>();
+      for (const p of profiles ?? []) nameMap.set(p.id, p.full_name);
+      return (timers ?? []).map((t) => ({
+        user_id: t.user_id,
+        started_at: t.started_at,
+        name: nameMap.get(t.user_id) ?? "Unnamed",
+      }));
+    },
+  });
+
+  // A per-second ticker so the live durations count up smoothly.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const activeById = useMemo(() => {
+    const map = new Map<string, number>(); // user_id -> started_at ms
+    for (const t of activeQuery.data ?? []) {
+      map.set(t.user_id, new Date(t.started_at).getTime());
+    }
+    return map;
+  }, [activeQuery.data]);
+
   const sessions = sessionsQuery.data ?? [];
 
   const people = useMemo(() => {
@@ -65,10 +126,32 @@ function HistoryPage() {
     return [...map.values()].sort((a, b) => b.seconds - a.seconds);
   }, [sessions]);
 
+  /** Active time window in ms (or null for "all time") */
+  const timeWindow = useMemo<{ start: number | null; end: number | null }>(() => {
+    if (customStart && customEnd) {
+      const s = new Date(`${customStart}T00:00:00`);
+      const e = new Date(`${customEnd}T23:59:59.999`);
+      if (!isNaN(s.getTime()) && !isNaN(e.getTime()) && s.getTime() <= e.getTime()) {
+        return { start: s.getTime(), end: e.getTime() };
+      }
+    }
+    if (rangeDays !== null) {
+      const end = Date.now();
+      const start = end - rangeDays * 24 * 60 * 60 * 1000;
+      return { start, end };
+    }
+    return { start: null, end: null };
+  }, [rangeDays, customStart, customEnd]);
+
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     return sessions.filter((s) => {
       if (selectedUser && s.user_id !== selectedUser) return false;
+      if (timeWindow.start !== null || timeWindow.end !== null) {
+        const stoppedAt = new Date(s.stopped_at).getTime();
+        if (timeWindow.start !== null && stoppedAt < timeWindow.start) return false;
+        if (timeWindow.end !== null && stoppedAt > timeWindow.end) return false;
+      }
       if (!term) return true;
       return (
         s.title.toLowerCase().includes(term) ||
@@ -76,9 +159,33 @@ function HistoryPage() {
         (s.profiles?.full_name ?? "").toLowerCase().includes(term)
       );
     });
-  }, [sessions, selectedUser, search]);
+  }, [sessions, selectedUser, search, timeWindow]);
+
+  const analytics = useMemo(() => {
+    const total = filtered.length;
+    const totalSeconds = filtered.reduce((sum, s) => sum + s.duration_seconds, 0);
+    const avg = total > 0 ? Math.round(totalSeconds / total) : 0;
+    const activeUsers = new Set(filtered.map((s) => s.user_id)).size;
+    return { total, totalSeconds, avg, activeUsers };
+  }, [filtered]);
 
   const activePerson = people.find((p) => p.id === selectedUser) ?? null;
+  const hasAnyFilter =
+    !!selectedUser || rangeDays !== null || (!!customStart && !!customEnd) || !!search.trim();
+
+  function clearAllFilters() {
+    setSelectedUser(null);
+    setSearch("");
+    setRangeDays(null);
+    setCustomStart("");
+    setCustomEnd("");
+  }
+
+  function applyPreset(days: number) {
+    setRangeDays(days);
+    setCustomStart("");
+    setCustomEnd("");
+  }
 
   return (
     <div className="min-h-screen">
@@ -89,7 +196,8 @@ function HistoryPage() {
           Completed sessions people chose to share, newest first.
         </p>
 
-        <div className="mt-6 flex flex-wrap gap-2">
+        {/* PERSON FILTER */}
+        <FilterBlock icon={<UsersIcon className="size-4" />} label="Person">
           <Chip active={selectedUser === null} onClick={() => setSelectedUser(null)}>
             All
           </Chip>
@@ -102,8 +210,78 @@ function HistoryPage() {
               <span className="font-mono text-[10px] opacity-70">{p.count}</span>
             </Chip>
           ))}
-        </div>
+        </FilterBlock>
 
+        {/* TIME PRESETS */}
+        <FilterBlock icon={<Clock className="size-4" />} label="Quick range">
+          <Chip
+            active={rangeDays === null && !customStart && !customEnd}
+            onClick={() => {
+              setRangeDays(null);
+              setCustomStart("");
+              setCustomEnd("");
+            }}
+          >
+            All time
+          </Chip>
+          {RANGE_PRESETS.map((preset) => (
+            <Chip
+              key={preset.days}
+              active={rangeDays === preset.days && !customStart && !customEnd}
+              onClick={() => applyPreset(preset.days)}
+            >
+              Last {preset.label}
+            </Chip>
+          ))}
+        </FilterBlock>
+
+        {/* CUSTOM DATE RANGE */}
+        <FilterBlock icon={<Calendar className="size-4" />} label="Custom date range">
+          <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="flex-1 space-y-1">
+              <Label className="text-xs font-medium text-muted-foreground">From</Label>
+              <Input
+                type="date"
+                value={customStart}
+                max={customEnd || toDateInputValue(new Date())}
+                onChange={(e) => {
+                  setCustomStart(e.target.value);
+                  setRangeDays(null);
+                }}
+                className="h-10 rounded-xl"
+              />
+            </div>
+            <div className="flex-1 space-y-1">
+              <Label className="text-xs font-medium text-muted-foreground">To</Label>
+              <Input
+                type="date"
+                value={customEnd}
+                min={customStart}
+                max={toDateInputValue(new Date())}
+                onChange={(e) => {
+                  setCustomEnd(e.target.value);
+                  setRangeDays(null);
+                }}
+                className="h-10 rounded-xl"
+              />
+            </div>
+            {(customStart || customEnd) && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setCustomStart("");
+                  setCustomEnd("");
+                }}
+                className="h-10 rounded-xl"
+              >
+                Clear dates
+              </Button>
+            )}
+          </div>
+        </FilterBlock>
+
+        {/* SEARCH */}
         <div className="relative mt-4">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -114,16 +292,55 @@ function HistoryPage() {
           />
         </div>
 
-        {activePerson && (
-          <div className="mt-6 rounded-2xl bg-secondary p-4">
-            <p className="text-lg font-semibold tracking-tight">{activePerson.name}</p>
-            <p className="mt-0.5 font-mono text-xs text-muted-foreground">
-              {activePerson.count} session{activePerson.count > 1 ? "s" : ""} ·{" "}
-              {formatDuration(activePerson.seconds)} tracked
-            </p>
-          </div>
+        {/* ANALYTICS SUMMARY */}
+        {(hasAnyFilter || filtered.length > 0) && (
+          <section className="mt-6 rounded-2xl border border-border bg-card p-4 sm:p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                  Analysis {activePerson ? `for ${activePerson.name}` : "of the filtered range"}
+                </p>
+                <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+                  {describeRange({ rangeDays, customStart, customEnd })}
+                </p>
+              </div>
+              {hasAnyFilter && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={clearAllFilters}
+                  className="rounded-full text-xs"
+                >
+                  Reset all filters
+                </Button>
+              )}
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <StatTile
+                icon={<Clock className="size-4" />}
+                label="Total time"
+                value={formatDuration(analytics.totalSeconds)}
+              />
+              <StatTile
+                icon={<ListChecks className="size-4" />}
+                label="Sessions"
+                value={String(analytics.total)}
+              />
+              <StatTile
+                icon={<Clock className="size-4" />}
+                label="Average"
+                value={analytics.total > 0 ? formatDuration(analytics.avg) : "—"}
+              />
+              <StatTile
+                icon={<UsersIcon className="size-4" />}
+                label={activePerson ? "This person" : "Active people"}
+                value={activePerson ? "1" : String(analytics.activeUsers)}
+              />
+            </div>
+          </section>
         )}
 
+        {/* RESULTS LIST */}
         <div className="mt-6 space-y-3">
           {sessionsQuery.isLoading ? (
             <>
@@ -181,8 +398,8 @@ function HistoryPage() {
             <div className="rounded-2xl border border-dashed border-border p-12 text-center">
               <p className="font-medium">Nothing to show yet</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                {search || selectedUser
-                  ? "Try a different search or clear the filters."
+                {hasAnyFilter
+                  ? "Try a different search, clear the filters, or widen the date range."
                   : "Shared work sessions will appear here as soon as they're submitted."}
               </p>
             </div>
@@ -191,6 +408,27 @@ function HistoryPage() {
       </main>
 
       <WorkDetailDialog session={detail} onOpenChange={(open) => !open && setDetail(null)} />
+    </div>
+  );
+}
+
+/* ---------- helpers ---------- */
+
+function FilterBlock({
+  icon,
+  label,
+  children,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="mt-6">
+      <div className="mb-2 flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+        {icon} {label}
+      </div>
+      <div className="flex flex-wrap gap-2">{children}</div>
     </div>
   );
 }
@@ -216,4 +454,37 @@ function Chip({
       {children}
     </button>
   );
+}
+
+function StatTile({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-xl bg-secondary p-3">
+      <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        {icon} {label}
+      </div>
+      <p className="mt-1.5 font-mono text-lg font-semibold tnum">{value}</p>
+    </div>
+  );
+}
+
+function describeRange({
+  rangeDays,
+  customStart,
+  customEnd,
+}: {
+  rangeDays: number | null;
+  customStart: string;
+  customEnd: string;
+}): string {
+  if (customStart && customEnd) return `From ${customStart} to ${customEnd}`;
+  if (rangeDays !== null) return `Last ${rangeDays} day${rangeDays === 1 ? "" : "s"}`;
+  return "All time";
 }
